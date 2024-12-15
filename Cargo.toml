@@ -1,0 +1,8 @@
+[package]
+name = "qrun"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fork = "0.2.0"
+nix = { version = "0.29.0", features = ["signal", "process"] }
