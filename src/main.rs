@@ -9,7 +9,7 @@ use std::os::unix::process::CommandExt;
 use std::process::Command;
 
 static mut CHILD_PID: Pid = Pid::from_raw(-1);
-const UNCHECKED_SIGNALS: [Signal; 3] = [Signal::SIGTTIN, Signal::SIGKILL, Signal::SIGSTOP];
+const UNCHECKED_SIGNALS: [Signal; 5] = [Signal::SIGTTIN, Signal::SIGKILL, Signal::SIGSTOP, Signal::SIGCHLD, Signal::SIGSEGV];
 
 extern "C" fn handle_signal(signum: c_int) {
 	unsafe {
@@ -21,21 +21,17 @@ extern "C" fn handle_signal(signum: c_int) {
 
 fn main() {
 	let args: Vec<String> = args().collect();
-	let proc = daemon(true, true);
 
-	match proc {
+	match daemon(true, true) {
 		Ok(Fork::Child) => {
 			//TODO: SIGTTIN handler for input highlighting
-			println!("{:?}", args);
 			let _ = Command::new("zsh")
-				.args(std::iter::once("-c".to_string()).chain(args.into_iter()))
+				.args(std::iter::once("-c".to_string()).chain(args.into_iter().skip(1)))
 				.exec();
 
 			std::process::exit(1);
 		}
 		Ok(Fork::Parent(pid)) => {
-			println!("parent");
-
 			unsafe {
 				CHILD_PID = Pid::from_raw(pid);
 			}
