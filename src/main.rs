@@ -20,7 +20,7 @@ extern "C" fn handle_signal(signum: c_int) {
 }
 
 fn main() {
-	let args: Vec<String> = args().collect();
+	let args: Vec<String> = args().skip(1).collect();
 
 	match daemon(true, true) {
 		Ok(Fork::Child) => {
@@ -38,15 +38,14 @@ fn main() {
 
 			let handler = SigHandler::Handler(handle_signal);
 
-			for sig in 1..31 {
-				let signal: Signal = unsafe { std::mem::transmute::<i32, Signal>(sig) };
-				if UNCHECKED_SIGNALS.contains(&signal) {
+			for sig in Signal::iterator() {
+				if UNCHECKED_SIGNALS.contains(&sig) {
 					continue;
 				}
 
 				unsafe {
 					let _ = sigaction(
-						signal,
+						sig,
 						&SigAction::new(handler, signal::SaFlags::empty(), SigSet::empty()),
 					);
 				}
