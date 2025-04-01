@@ -25,17 +25,17 @@ extern "C" fn handle_signal(signum: c_int) {
 	}
 }
 
-fn get_timestamp() -> String {
+fn get_unix_timestamp() -> u64 {
 	let now = SystemTime::now();
 	let since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
-	format!("[{}] ", since_epoch.as_secs())
+	since_epoch.as_secs()
 }
 
 fn process_stream<R: BufRead, W: Write>(reader: R, mut writer: W) {
 	for line in reader.lines() {
 		if let Ok(line) = line {
-			let timestamp = get_timestamp();
-			let _ = writeln!(writer, "{}{}", timestamp, line);
+			let timestamp = get_unix_timestamp();
+			let _ = writeln!(writer, "[{}] {}", timestamp, line);
 		}
 	}
 }
@@ -92,8 +92,8 @@ fn main() {
 					for line in reader.lines() {
 						if let Ok(line) = line {
 							if let Ok(mut child_stdin) = stdin_clone.lock() {
-								let timestamp = get_timestamp();
-								let _ = writeln!(child_stdin, "{}{}", timestamp, line);
+								let timestamp = get_unix_timestamp();
+								let _ = writeln!(child_stdin, "[{}] {}", timestamp, line);
 							}
 						}
 					}
