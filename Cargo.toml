@@ -9,3 +9,8 @@ nix = { version = "0.29.0", features = ["signal", "process"] }
 
 [dev-dependencies]
 regex = "1.10.3"
+criterion = "0.5.1"
+
+[[bench]]
+name = "timestamp_benchmark"
+harness = false
