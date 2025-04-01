@@ -1,8 +1,11 @@
+use fork::{daemon, Fork};
 use nix::libc::c_int;
 use nix::sys::signal::{self, sigaction, SigAction, SigHandler, SigSet, Signal};
+use nix::sys::wait::waitpid;
 use nix::unistd::Pid;
 use std::env::args;
 use std::io::{self, BufRead, BufReader, Write};
+
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -48,20 +51,75 @@ fn main() {
 		std::process::exit(1);
 	}
 
-	// Create a command with piped stdin/stdout/stderr
-	let mut cmd = Command::new(&args[0]);
-	if args.len() > 1 {
-		cmd.args(&args[1..]);
-	}
+	match daemon(true, true) {
+		Ok(Fork::Child) => {
+			// Create a command with piped stdin/stdout/stderr
+			let mut cmd = Command::new(&args[0]);
+			if args.len() > 1 {
+				cmd.args(&args[1..]);
+			}
 
-	cmd.stdin(Stdio::piped())
-		.stdout(Stdio::piped())
-		.stderr(Stdio::piped());
+			cmd.stdin(Stdio::piped())
+				.stdout(Stdio::piped())
+				.stderr(Stdio::piped());
 
-	match cmd.spawn() {
-		Ok(mut child) => {
+			match cmd.spawn() {
+				Ok(mut child) => {
+					// Handle stdin
+					let stdin = child.stdin.take();
+					if let Some(stdin) = stdin {
+						let stdin_mutex = Arc::new(Mutex::new(stdin));
+						let stdin_clone = Arc::clone(&stdin_mutex);
+
+						thread::spawn(move || {
+							let stdin = io::stdin();
+							let reader = stdin.lock();
+
+							for line in reader.lines() {
+								if let Ok(line) = line {
+									if let Ok(mut child_stdin) = stdin_clone.lock() {
+										let timestamp = get_unix_timestamp();
+										let _ = writeln!(child_stdin, "[{}] {}", timestamp, line);
+									}
+								}
+							}
+						});
+					}
+
+					// Handle stdout
+					if let Some(stdout) = child.stdout.take() {
+						let stdout_reader = BufReader::new(stdout);
+						thread::spawn(move || {
+							process_stream(stdout_reader, io::stdout());
+						});
+					}
+
+					// Handle stderr
+					if let Some(stderr) = child.stderr.take() {
+						let stderr_reader = BufReader::new(stderr);
+						thread::spawn(move || {
+							process_stream(stderr_reader, io::stderr());
+						});
+					}
+
+					// Wait for the child process to complete
+					match child.wait() {
+						Ok(status) => std::process::exit(status.code().unwrap_or(1)),
+						Err(e) => {
+							eprintln!("Failed to wait for child process: {}", e);
+							std::process::exit(1);
+						}
+					}
+				}
+				Err(e) => {
+					eprintln!("Failed to execute command: {}", e);
+					std::process::exit(1);
+				}
+			}
+		}
+		Ok(Fork::Parent(pid)) => {
 			unsafe {
-				CHILD_PID = Pid::from_raw(child.id() as i32);
+				CHILD_PID = Pid::from_raw(pid);
 			}
 
 			let handler = SigHandler::Handler(handle_signal);
@@ -79,54 +137,10 @@ fn main() {
 				}
 			}
 
-			// Handle stdin
-			let stdin = child.stdin.take();
-			if let Some(stdin) = stdin {
-				let stdin_mutex = Arc::new(Mutex::new(stdin));
-				let stdin_clone = Arc::clone(&stdin_mutex);
-
-				thread::spawn(move || {
-					let stdin = io::stdin();
-					let reader = stdin.lock();
-
-					for line in reader.lines() {
-						if let Ok(line) = line {
-							if let Ok(mut child_stdin) = stdin_clone.lock() {
-								let timestamp = get_unix_timestamp();
-								let _ = writeln!(child_stdin, "[{}] {}", timestamp, line);
-							}
-						}
-					}
-				});
-			}
-
-			// Handle stdout
-			if let Some(stdout) = child.stdout.take() {
-				let stdout_reader = BufReader::new(stdout);
-				thread::spawn(move || {
-					process_stream(stdout_reader, io::stdout());
-				});
-			}
-
-			// Handle stderr
-			if let Some(stderr) = child.stderr.take() {
-				let stderr_reader = BufReader::new(stderr);
-				thread::spawn(move || {
-					process_stream(stderr_reader, io::stderr());
-				});
-			}
-
-			// Wait for the child process to complete
-			match child.wait() {
-				Ok(status) => std::process::exit(status.code().unwrap_or(1)),
-				Err(e) => {
-					eprintln!("Failed to wait for child process: {}", e);
-					std::process::exit(1);
-				}
-			}
+			let _ = waitpid(Pid::from_raw(pid), None);
 		}
 		Err(e) => {
-			eprintln!("Failed to execute command: {}", e);
+			eprintln!("qrun failed to fork: {}", e);
 			std::process::exit(1);
 		}
 	}
