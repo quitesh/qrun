@@ -344,8 +344,8 @@ fn open_slave_fd(master_fd: libc::c_int) -> Result<libc::c_int, Box<dyn std::err
     Ok(fd)
 }
 
-/// Strip ANSI escape codes from a PTY output chunk and write the cleaned text
-/// to the journal.  No-op on non-Unix platforms.
+/// Write raw PTY output (including ANSI escape sequences) to the journal.
+/// No-op on non-Unix platforms.
 pub fn journal_pty_output(
     writer: &mut JournalWriter,
     raw: &[u8],
@@ -353,11 +353,9 @@ pub fn journal_pty_output(
 ) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(unix)]
     {
-        let clean = strip_ansi_escapes::strip(raw);
-        let text = String::from_utf8_lossy(&clean);
-        let trimmed = text.trim_end();
+        let trimmed = raw.trim_ascii_end();
         if !trimmed.is_empty() {
-            write_journal_entry(writer, trimmed, "6", "stdout", pid)?;
+            write_journal_entry(writer, &String::from_utf8_lossy(trimmed), "6", "stdout", pid)?;
         }
     }
     Ok(())
