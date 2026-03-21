@@ -4,5 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-fork = "0.2.0"
+qjournal = { path = "../qjournal" }
+clap = { version = "4.4", features = ["derive"] }
+
+# Unix-specific dependencies
+[target.'cfg(unix)'.dependencies]
 nix = { version = "0.29.0", features = ["signal", "process"] }
+
+# Cross-platform notifications
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winuser", "processenv"] }
