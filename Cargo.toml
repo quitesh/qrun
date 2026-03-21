@@ -10,6 +10,10 @@ clap = { version = "4.4", features = ["derive"] }
 # Unix-specific dependencies
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29.0", features = ["signal", "process"] }
+pty-process = { version = "0.4", features = ["async"] }
+strip-ansi-escapes = "0.2"
+libc = "0.2"
+tokio = { version = "1", features = ["process", "net", "io-util"] }
 
 # Cross-platform notifications
 [target.'cfg(windows)'.dependencies]
